@@ -6,11 +6,13 @@
 #include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "wldap32.lib")
 
 // Use PORT environment variable with fallback to 8080
 #define DEFAULT_PORT 8080
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 1024
 #define MAX_STUDENTS 100
+#define MAX_ATTENDANCE 1000
 
 typedef struct {
     char enrollment_no[20];
@@ -25,7 +27,7 @@ typedef struct {
 
 Student students[MAX_STUDENTS];
 int student_count = 0;
-Attendance attendance_records[1000];
+Attendance attendance_records[MAX_ATTENDANCE];
 int attendance_count = 0;
 
 // College coordinates (Avviare Educational Hub)
@@ -140,81 +142,136 @@ void extract_file_path(const char* full_path, char* file_path, int max_length) {
     file_path[i] = '\0';
 }
 
-void handle_request(SOCKET client_socket, char* request) {
-    char method[10];
-    char full_path[256];
-    char file_path[256];
-    char protocol[20];
-    
-    // Parse the request line
-    sscanf(request, "%s %s %s", method, full_path, protocol);
-    printf("Received request: %s %s\n", method, full_path);
-
-    // Remove leading slash and extract file path without query parameters
-    char *decoded_path = full_path + 1;
-    extract_file_path(decoded_path, file_path, sizeof(file_path));
-    
-    // Handle root path
-    if (strcmp(full_path, "/") == 0) {
-        send_file(client_socket, "teacher_dashboard.html");
-        return;
-    }
-
-    // Handle file requests for HTML, CSS, JS files
-    if (strstr(full_path, ".html") != NULL || strstr(full_path, ".css") != NULL || strstr(full_path, ".js") != NULL) {
-        send_file(client_socket, file_path);
-        return;
-    }
-
+void handle_request(SOCKET client_socket, const char* request) {
     char response[BUFFER_SIZE];
-    // Handle API endpoints
-    if (strstr(request, "GET /verify_student") != NULL) {
-        char enrollment_no[20];
-        sscanf(strstr(request, "enrollment="), "enrollment=%s", enrollment_no);
-        
-        Student* student = find_student(enrollment_no);
-        if (student != NULL) {
-            sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n{\"status\":\"success\",\"name\":\"%s\"}", 
-                    student->name);
-        } else {
-            sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n{\"status\":\"error\",\"message\":\"Student not found\"}");
-        }
+    char* file_path = extract_file_path(request);
+    
+    if (!file_path) {
+        sprintf(response, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
         send(client_socket, response, strlen(response), 0);
-    } else if (strstr(request, "POST /mark_attendance") != NULL) {
-        char enrollment_no[20];
-        sscanf(strstr(request, "enrollment="), "enrollment=%s", enrollment_no);
-        
-        Student* student = find_student(enrollment_no);
-        if (student != NULL) {
-            mark_attendance(enrollment_no);
-            sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n{\"status\":\"success\",\"message\":\"Attendance marked\"}");
+        return;
+    }
+    
+    // Handle attendance submission
+    if (strstr(request, "/mark_attendance")) {
+        // Extract enrollment number from query parameters
+        char* query = strstr(request, "?d=");
+        if (query) {
+            query += 3; // Skip "?d="
+            
+            // Parse JSON data
+            char enrollment[20] = {0};
+            char name[100] = {0};
+            char father_name[100] = {0};
+            
+            // Extract enrollment number from JSON
+            char* enroll_start = strstr(query, "\"l\":\"");
+            if (enroll_start) {
+                enroll_start += 5;
+                char* enroll_end = strchr(enroll_start, '\"');
+                if (enroll_end) {
+                    strncpy(enrollment, enroll_start, enroll_end - enroll_start);
+                    enrollment[enroll_end - enroll_start] = '\0';
+                }
+            }
+            
+            // Find student in students.csv
+            FILE* student_file = fopen("students.csv", "r");
+            if (student_file) {
+                char line[256];
+                while (fgets(line, sizeof(line), student_file)) {
+                    char file_enrollment[20];
+                    sscanf(line, "%[^,],%[^,],%[^\n]", file_enrollment, name, father_name);
+                    if (strcmp(file_enrollment, enrollment) == 0) {
+                        break;
+                    }
+                }
+                fclose(student_file);
+            }
+            
+            // Add to attendance records
+            if (attendance_count < MAX_ATTENDANCE) {
+                strcpy(attendance_records[attendance_count].enrollment_no, enrollment);
+                strcpy(attendance_records[attendance_count].name, name);
+                strcpy(attendance_records[attendance_count].father_name, father_name);
+                get_current_timestamp(attendance_records[attendance_count].timestamp, sizeof(attendance_records[attendance_count].timestamp));
+                attendance_count++;
+                
+                sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}");
+            } else {
+                sprintf(response, "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n");
+            }
         } else {
-            sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n{\"status\":\"error\",\"message\":\"Student not found\"}");
+            sprintf(response, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
         }
-        send(client_socket, response, strlen(response), 0);
-    } else if (strstr(request, "GET /get_attendance") != NULL) {
-        char json[BUFFER_SIZE] = "[";
-        int len = 1;
-        
+    }
+    // Handle attendance data request
+    else if (strcmp(file_path, "/get_attendance") == 0) {
+        char json_data[BUFFER_SIZE * 10] = "[";
         for (int i = 0; i < attendance_count; i++) {
-            Student* student = find_student(attendance_records[i].enrollment_no);
-            if (student != NULL) {
-                len += sprintf(json + len, 
-                    "{\"enrollment_no\":\"%s\",\"name\":\"%s\",\"timestamp\":\"%s\"},",
+            char record[256];
+            sprintf(record, "{\"enrollment_no\":\"%s\",\"name\":\"%s\",\"father_name\":\"%s\",\"timestamp\":\"%s\"}",
                     attendance_records[i].enrollment_no,
-                    student->name,
+                    attendance_records[i].name,
+                    attendance_records[i].father_name,
                     attendance_records[i].timestamp);
+            
+            strcat(json_data, record);
+            if (i < attendance_count - 1) {
+                strcat(json_data, ",");
             }
         }
-        if (len > 1) json[len-1] = ']';
-        else strcat(json, "]");
+        strcat(json_data, "]");
         
-        sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n%s", json);
-        send(client_socket, response, strlen(response), 0);
-    } else {
-        sprintf(response, "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n\r\n{\"status\":\"error\",\"message\":\"Invalid endpoint\"}");
-        send(client_socket, response, strlen(response), 0);
+        sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",
+                strlen(json_data), json_data);
     }
+    // Serve HTML, CSS, and JS files
+    else {
+        // Default to index.html if root path
+        if (strcmp(file_path, "/") == 0) {
+            strcpy(file_path, "/index.html");
+        }
+        
+        // Remove leading slash
+        if (file_path[0] == '/') {
+            file_path++;
+        }
+        
+        // Open and read the requested file
+        FILE* file = fopen(file_path, "rb");
+        if (file) {
+            // Get file size
+            fseek(file, 0, SEEK_END);
+            long file_size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+            
+            // Determine content type
+            const char* content_type = "text/plain";
+            if (strstr(file_path, ".html")) content_type = "text/html";
+            else if (strstr(file_path, ".css")) content_type = "text/css";
+            else if (strstr(file_path, ".js")) content_type = "application/javascript";
+            
+            // Send HTTP header
+            sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\n\r\n",
+                    content_type, file_size);
+            send(client_socket, response, strlen(response), 0);
+            
+            // Send file content
+            char buffer[BUFFER_SIZE];
+            size_t bytes_read;
+            while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+                send(client_socket, buffer, bytes_read, 0);
+            }
+            
+            fclose(file);
+        } else {
+            sprintf(response, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+            send(client_socket, response, strlen(response), 0);
+        }
+    }
+    
+    free(file_path);
 }
 
 int main() {
