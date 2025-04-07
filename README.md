@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Smart Attendance System
 
 A modern attendance management system that uses QR codes and location verification to ensure students are physically present when marking attendance.
@@ -89,3 +90,6 @@ Sector 62, Noida, Uttar Pradesh 201301
 - Students must enable location services on their devices
 - Internet connection is required for both teachers and students
 - The system uses local storage for demonstration purposes 
+=======
+# smart-attendence-system
+>>>>>>> a814df8d2b9235b02fc64546c0abee04e0046d0b
