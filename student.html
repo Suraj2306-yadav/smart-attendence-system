@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attendance</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .message {
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Student Attendance</h1>
+        <div class="form-group">
+            <label for="enrollment">Enrollment Number:</label>
+            <input type="text" id="enrollment" placeholder="Enter your enrollment number">
+        </div>
+        <button onclick="markAttendance()">Mark Attendance</button>
+        <div id="message" class="message" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const qrData = urlParams.get('d');
+        
+        // Parse QR code data
+        let lectureId, timestamp, location;
+        if (qrData) {
+            try {
+                const data = JSON.parse(decodeURIComponent(qrData));
+                lectureId = data.l;
+                timestamp = data.t;
+                location = data.loc;
+            } catch (e) {
+                console.error('Error parsing QR data:', e);
+            }
+        }
+
+        // Check if QR code is expired (5 minutes validity)
+        const qrExpiryTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const isQrExpired = timestamp && (Date.now() - timestamp > qrExpiryTime);
+
+        function showMessage(text, isError = false) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = 'message ' + (isError ? 'error' : 'success');
+            messageDiv.style.display = 'block';
+        }
+
+        function verifyLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject('Geolocation is not supported by your browser');
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const userLat = position.coords.latitude;
+                        const userLng = position.coords.longitude;
+                        
+                        // College coordinates (Avviare Educational Hub)
+                        const collegeLat = 28.6266;
+                        const collegeLng = 77.3666;
+                        
+                        // Calculate distance using Haversine formula
+                        const R = 6371; // Earth's radius in km
+                        const dLat = (userLat - collegeLat) * Math.PI / 180;
+                        const dLon = (userLng - collegeLng) * Math.PI / 180;
+                        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                 Math.cos(collegeLat * Math.PI / 180) * Math.cos(userLat * Math.PI / 180) * 
+                                 Math.sin(dLon/2) * Math.sin(dLon/2);
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        const distance = R * c; // Distance in km
+                        
+                        // Check if student is within 100 meters of the college
+                        const isNearCollege = distance <= 0.1; // Within 100 meters
+                        
+                        if (isNearCollege) {
+                            resolve(true);
+                        } else {
+                            reject('You are not at the college location. Please enable location services and be present at Avviare Educational Hub.');
+                        }
+                    },
+                    (error) => {
+                        reject('Error getting your location: ' + error.message);
+                    }
+                );
+            });
+        }
+
+        function markAttendance() {
+            const enrollment = document.getElementById('enrollment').value;
+            
+            if (!enrollment) {
+                showMessage('Please enter your enrollment number', true);
+                return;
+            }
+
+            if (isQrExpired) {
+                showMessage('QR code has expired. Please ask your teacher to generate a new one.', true);
+                return;
+            }
+
+            // First verify if the student exists
+            fetch(`/verify_student?enrollment=${enrollment}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Then verify location
+                        verifyLocation()
+                            .then(() => {
+                                // If location is verified, mark attendance
+                                fetch(`/mark_attendance?enrollment=${enrollment}`, {
+                                    method: 'POST'
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.status === 'success') {
+                                        showMessage('Attendance marked successfully!');
+                                        // Close the page after 2 seconds
+                                        setTimeout(() => {
+                                            window.close();
+                                        }, 2000);
+                                    } else {
+                                        showMessage(data.message, true);
+                                    }
+                                })
+                                .catch(error => {
+                                    showMessage('Error marking attendance', true);
+                                });
+                            })
+                            .catch(error => {
+                                showMessage(error, true);
+                            });
+                    } else {
+                        showMessage('Invalid enrollment number', true);
+                    }
+                })
+                .catch(error => {
+                    showMessage('Error verifying student', true);
+                });
+        }
+    </script>
+</body>
+</html> 

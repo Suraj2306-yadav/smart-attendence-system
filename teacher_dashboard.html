@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard - Smart Attendance System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .message {
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+        }
+        #qrCode {
+            text-align: center;
+            margin: 20px 0;
+        }
+        #qrCode img {
+            max-width: 200px;
+            margin: 0 auto;
+        }
+        /* Table Styles */
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background-color: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .timestamp {
+            white-space: nowrap;
+        }
+        .no-records {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .controls button {
+            flex: 1;
+        }
+        .download-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .download-options button {
+            flex: 1;
+            max-width: 200px;
+        }
+        .pdf-btn {
+            background-color: #e74c3c;
+        }
+        .pdf-btn:hover {
+            background-color: #c0392b;
+        }
+        .txt-btn {
+            background-color: #3498db;
+        }
+        .txt-btn:hover {
+            background-color: #2980b9;
+        }
+        /* Login Screen Styles */
+        #loginScreen {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 30px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        #loginScreen h1 {
+            margin-bottom: 30px;
+        }
+        #loginScreen .form-group {
+            margin-bottom: 25px;
+        }
+        #loginScreen input[type="password"] {
+            padding: 12px;
+            font-size: 16px;
+        }
+        #loginScreen button {
+            padding: 12px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        #dashboardContent {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen">
+        <h1>Teacher Login</h1>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter password">
+        </div>
+        <button onclick="login()">Login</button>
+        <div id="loginMessage" class="message" style="display: none;"></div>
+    </div>
+
+    <!-- Dashboard Content (Hidden until login) -->
+    <div id="dashboardContent" class="container">
+        <h1>Teacher Dashboard</h1>
+        
+        <!-- QR Code Generation Section -->
+        <div class="section">
+            <h2>Generate Attendance QR Code</h2>
+            <div class="form-group">
+                <label for="location">College Location:</label>
+                <input type="text" id="location" value="Avviare Educational Hub" readonly>
+            </div>
+            <div class="controls">
+                <button onclick="generateQR()">Generate New QR Code</button>
+                <button onclick="refreshAttendance()">Refresh Attendance List</button>
+            </div>
+            <div id="qrCode"></div>
+            <div id="message" class="message" style="display: none;"></div>
+        </div>
+
+        <!-- Attendance Records Section -->
+        <div class="section">
+            <h2>Attendance Records</h2>
+            <div class="table-container">
+                <table id="attendanceTable">
+                    <thead>
+                        <tr>
+                            <th>Sr. No.</th>
+                            <th>Enrollment No.</th>
+                            <th>Student Name</th>
+                            <th>Father's Name</th>
+                            <th>Date & Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceList">
+                        <!-- Attendance records will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="download-options">
+                <button class="pdf-btn" onclick="downloadPDF()">Download as PDF</button>
+                <button class="txt-btn" onclick="downloadTXT()">Download as TXT</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- Include jsPDF library for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        // College coordinates (Avviare Educational Hub)
+        const COLLEGE_LAT = 28.6266;
+        const COLLEGE_LNG = 77.3666;
+        
+        // QR code expiry time (5 minutes)
+        const QR_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
+        let qrExpiryTimer = null;
+
+        // Store attendance data globally
+        let attendanceData = [];
+
+        // Login function
+        function login() {
+            const password = document.getElementById('password').value;
+            const loginMessage = document.getElementById('loginMessage');
+            
+            if (password === 'smart@123') {
+                // Show dashboard and hide login screen
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('dashboardContent').style.display = 'block';
+                
+                // Initialize dashboard
+                generateQR();
+                refreshAttendance();
+            } else {
+                loginMessage.textContent = 'Incorrect password. Please try again.';
+                loginMessage.className = 'message error';
+                loginMessage.style.display = 'block';
+                document.getElementById('password').value = '';
+            }
+        }
+
+        // Allow login with Enter key
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+
+        function showMessage(text, isError = false) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = 'message ' + (isError ? 'error' : 'success');
+            messageDiv.style.display = 'block';
+        }
+
+        function generateQR() {
+            // Clear any existing timer
+            if (qrExpiryTimer) {
+                clearTimeout(qrExpiryTimer);
+            }
+            
+            // Generate a unique lecture ID (timestamp)
+            const lectureId = Date.now().toString(36);
+            
+            // Create QR code data
+            const qrData = {
+                l: lectureId,
+                t: Date.now(),
+                loc: [COLLEGE_LAT, COLLEGE_LNG]
+            };
+
+            // Generate QR code
+            const qrCodeDiv = document.getElementById('qrCode');
+            qrCodeDiv.innerHTML = ''; // Clear previous QR code
+            
+            QRCode.toCanvas(qrCodeDiv, JSON.stringify(qrData), {
+                width: 200,
+                margin: 1,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }, function(error) {
+                if (error) {
+                    showMessage('Error generating QR code: ' + error, true);
+                } else {
+                    showMessage('QR Code generated successfully! Valid for 5 minutes.');
+                    
+                    // Set timer to regenerate QR code after expiry
+                    qrExpiryTimer = setTimeout(() => {
+                        showMessage('QR Code expired. Generating new one...', true);
+                        generateQR(); // Automatically generate a new QR code
+                    }, QR_EXPIRY_TIME);
+                }
+            });
+        }
+
+        function refreshAttendance() {
+            fetch('/get_attendance')
+                .then(response => response.json())
+                .then(data => {
+                    // Store the data globally
+                    attendanceData = data;
+                    
+                    const attendanceList = document.getElementById('attendanceList');
+                    attendanceList.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        attendanceList.innerHTML = '<tr><td colspan="5" class="no-records">No attendance records yet</td></tr>';
+                        return;
+                    }
+
+                    // Sort attendance records by timestamp in descending order (newest first)
+                    data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                    data.forEach((record, index) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${record.enrollment_no}</td>
+                            <td>${record.name}</td>
+                            <td>${record.father_name || '-'}</td>
+                            <td class="timestamp">${record.timestamp}</td>
+                        `;
+                        attendanceList.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    const attendanceList = document.getElementById('attendanceList');
+                    attendanceList.innerHTML = '<tr><td colspan="5" class="no-records error">Error loading attendance records</td></tr>';
+                });
+        }
+
+        function downloadPDF() {
+            if (attendanceData.length === 0) {
+                alert('No attendance records to download');
+                return;
+            }
+
+            // Create a new jsPDF instance
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Add title
+            doc.setFontSize(18);
+            doc.text('Attendance Records', 14, 15);
+            
+            // Add date
+            doc.setFontSize(12);
+            const today = new Date().toLocaleDateString();
+            doc.text(`Generated on: ${today}`, 14, 25);
+            
+            // Add table
+            const tableColumn = ['Sr. No.', 'Enrollment No.', 'Student Name', 'Father\'s Name', 'Date & Time'];
+            const tableRows = [];
+            
+            // Sort data by timestamp (newest first)
+            const sortedData = [...attendanceData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            sortedData.forEach((record, index) => {
+                const rowData = [
+                    index + 1,
+                    record.enrollment_no,
+                    record.name,
+                    record.father_name || '-',
+                    record.timestamp
+                ];
+                tableRows.push(rowData);
+            });
+            
+            // Generate the table
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 35,
+                theme: 'grid',
+                headStyles: { fillColor: [76, 175, 80] },
+                alternateRowStyles: { fillColor: [245, 245, 245] }
+            });
+            
+            // Save the PDF
+            doc.save('attendance_records.pdf');
+        }
+
+        function downloadTXT() {
+            if (attendanceData.length === 0) {
+                alert('No attendance records to download');
+                return;
+            }
+
+            // Create text content
+            let textContent = 'ATTENDANCE RECORDS\n';
+            textContent += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
+            textContent += 'Sr. No.\tEnrollment No.\tStudent Name\tFather\'s Name\tDate & Time\n';
+            textContent += '----------------------------------------------------------------------\n';
+            
+            // Sort data by timestamp (newest first)
+            const sortedData = [...attendanceData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            sortedData.forEach((record, index) => {
+                textContent += `${index + 1}\t${record.enrollment_no}\t${record.name}\t${record.father_name || '-'}\t${record.timestamp}\n`;
+            });
+            
+            // Create a blob and download
+            const blob = new Blob([textContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'attendance_records.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html> 

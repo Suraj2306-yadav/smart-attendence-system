@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: attendance-system
+    env: docker
+    buildCommand: gcc server.c -o app -lwsock32 -lws2_32
+    startCommand: ./app
+    envVars:
+      - key: PORT
+        value: 8080 

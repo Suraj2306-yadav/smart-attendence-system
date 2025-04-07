@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance System Test Panel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .message {
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+        }
+        /* Table Styles */
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background-color: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .timestamp {
+            white-space: nowrap;
+        }
+        .no-records {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+        .download-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .download-options button {
+            flex: 1;
+            max-width: 200px;
+        }
+        .pdf-btn {
+            background-color: #e74c3c;
+        }
+        .pdf-btn:hover {
+            background-color: #c0392b;
+        }
+        .txt-btn {
+            background-color: #3498db;
+        }
+        .txt-btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attendance System Test Panel</h1>
+        
+        <!-- Student Section -->
+        <div class="section">
+            <h2>Student Panel (Test Mode)</h2>
+            <div class="form-group">
+                <label for="enrollment">Enrollment Number:</label>
+                <input type="text" id="enrollment" placeholder="Enter your enrollment number">
+            </div>
+            <button onclick="markAttendance()">Mark Attendance (Test Mode)</button>
+            <div id="studentMessage" class="message" style="display: none;"></div>
+        </div>
+
+        <!-- Teacher Section -->
+        <div class="section">
+            <h2>Teacher Panel (Test Mode)</h2>
+            <button onclick="refreshAttendance()">Refresh Attendance List</button>
+            <div class="table-container">
+                <table id="attendanceTable">
+                    <thead>
+                        <tr>
+                            <th>Sr. No.</th>
+                            <th>Enrollment No.</th>
+                            <th>Student Name</th>
+                            <th>Father's Name</th>
+                            <th>Date & Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceList">
+                        <!-- Attendance records will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="download-options">
+                <button class="pdf-btn" onclick="downloadPDF()">Download as PDF</button>
+                <button class="txt-btn" onclick="downloadTXT()">Download as TXT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Include jsPDF library for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <script>
+        // Test data for QR code
+        const testQrData = {
+            l: "test123",
+            t: Date.now(),
+            loc: [28.6266, 77.3666]
+        };
+        
+        // QR code expiry time (5 minutes)
+        const QR_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
+        let qrExpiryTimer = null;
+
+        // Store attendance data globally
+        let attendanceData = [];
+
+        function showMessage(elementId, text, isError = false) {
+            const messageDiv = document.getElementById(elementId);
+            messageDiv.textContent = text;
+            messageDiv.className = 'message ' + (isError ? 'error' : 'success');
+            messageDiv.style.display = 'block';
+        }
+
+        function markAttendance() {
+            const enrollment = document.getElementById('enrollment').value;
+            
+            if (!enrollment) {
+                showMessage('studentMessage', 'Please enter your enrollment number', true);
+                return;
+            }
+
+            // Check if QR code is expired (5 minutes validity)
+            const isQrExpired = testQrData.t && (Date.now() - testQrData.t > QR_EXPIRY_TIME);
+            if (isQrExpired) {
+                showMessage('studentMessage', 'QR code has expired. Please ask your teacher to generate a new one.', true);
+                return;
+            }
+
+            // First verify if the student exists
+            fetch(`/verify_student?enrollment=${enrollment}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // In test mode, skip location verification and mark attendance directly
+                        fetch(`/mark_attendance?enrollment=${enrollment}`, {
+                            method: 'POST'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                showMessage('studentMessage', 'Attendance marked successfully!');
+                                // Close the page after 2 seconds
+                                setTimeout(() => {
+                                    window.close();
+                                }, 2000);
+                            } else {
+                                showMessage('studentMessage', data.message, true);
+                            }
+                        })
+                        .catch(error => {
+                            showMessage('studentMessage', 'Error marking attendance', true);
+                        });
+                    } else {
+                        showMessage('studentMessage', 'Invalid enrollment number', true);
+                    }
+                })
+                .catch(error => {
+                    showMessage('studentMessage', 'Error verifying student', true);
+                });
+        }
+
+        function refreshAttendance() {
+            fetch('/get_attendance')
+                .then(response => response.json())
+                .then(data => {
+                    // Store the data globally
+                    attendanceData = data;
+                    
+                    const attendanceList = document.getElementById('attendanceList');
+                    attendanceList.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        attendanceList.innerHTML = '<tr><td colspan="5" class="no-records">No attendance records yet</td></tr>';
+                        return;
+                    }
+
+                    // Sort attendance records by timestamp in descending order (newest first)
+                    data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                    data.forEach((record, index) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${record.enrollment_no}</td>
+                            <td>${record.name}</td>
+                            <td>${record.father_name || '-'}</td>
+                            <td class="timestamp">${record.timestamp}</td>
+                        `;
+                        attendanceList.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    const attendanceList = document.getElementById('attendanceList');
+                    attendanceList.innerHTML = '<tr><td colspan="5" class="no-records error">Error loading attendance records</td></tr>';
+                });
+        }
+
+        function downloadPDF() {
+            if (attendanceData.length === 0) {
+                alert('No attendance records to download');
+                return;
+            }
+
+            // Create a new jsPDF instance
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Add title
+            doc.setFontSize(18);
+            doc.text('Attendance Records', 14, 15);
+            
+            // Add date
+            doc.setFontSize(12);
+            const today = new Date().toLocaleDateString();
+            doc.text(`Generated on: ${today}`, 14, 25);
+            
+            // Add table
+            const tableColumn = ['Sr. No.', 'Enrollment No.', 'Student Name', 'Father\'s Name', 'Date & Time'];
+            const tableRows = [];
+            
+            // Sort data by timestamp (newest first)
+            const sortedData = [...attendanceData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            sortedData.forEach((record, index) => {
+                const rowData = [
+                    index + 1,
+                    record.enrollment_no,
+                    record.name,
+                    record.father_name || '-',
+                    record.timestamp
+                ];
+                tableRows.push(rowData);
+            });
+            
+            // Generate the table
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 35,
+                theme: 'grid',
+                headStyles: { fillColor: [76, 175, 80] },
+                alternateRowStyles: { fillColor: [245, 245, 245] }
+            });
+            
+            // Save the PDF
+            doc.save('attendance_records.pdf');
+        }
+
+        function downloadTXT() {
+            if (attendanceData.length === 0) {
+                alert('No attendance records to download');
+                return;
+            }
+
+            // Create text content
+            let textContent = 'ATTENDANCE RECORDS\n';
+            textContent += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
+            textContent += 'Sr. No.\tEnrollment No.\tStudent Name\tFather\'s Name\tDate & Time\n';
+            textContent += '----------------------------------------------------------------------\n';
+            
+            // Sort data by timestamp (newest first)
+            const sortedData = [...attendanceData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            sortedData.forEach((record, index) => {
+                textContent += `${index + 1}\t${record.enrollment_no}\t${record.name}\t${record.father_name || '-'}\t${record.timestamp}\n`;
+            });
+            
+            // Create a blob and download
+            const blob = new Blob([textContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'attendance_records.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Load attendance list when page loads
+        refreshAttendance();
+    </script>
+</body>
+</html> 
