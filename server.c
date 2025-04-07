@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-#pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib, "wldap32.lib")
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 // Use PORT environment variable with fallback to 8080
 #define DEFAULT_PORT 8080
@@ -22,6 +23,8 @@ typedef struct {
 
 typedef struct {
     char enrollment_no[20];
+    char name[100];
+    char father_name[100];
     char timestamp[30];
 } Attendance;
 
@@ -33,6 +36,17 @@ int attendance_count = 0;
 // College coordinates (Avviare Educational Hub)
 const double COLLEGE_LAT = 28.6266;
 const double COLLEGE_LNG = 77.3666;
+
+// Function to get current timestamp
+void get_current_timestamp(char *timestamp, size_t size) {
+    time_t now;
+    struct tm *tm_info;
+    
+    time(&now);
+    tm_info = localtime(&now);
+    
+    strftime(timestamp, size, "%Y-%m-%d %H:%M:%S", tm_info);
+}
 
 // Function to get content type based on file extension
 const char* get_content_type(const char* filename) {
@@ -72,7 +86,7 @@ void load_students() {
 }
 
 // Function to send a file
-void send_file(SOCKET client_socket, const char* filename) {
+void send_file(int client_socket, const char* filename) {
     printf("Attempting to serve file: %s\n", filename);
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
@@ -132,17 +146,32 @@ void mark_attendance(const char* enrollment_no) {
     attendance_count++;
 }
 
-// Function to extract file path without query parameters
-void extract_file_path(const char* full_path, char* file_path, int max_length) {
-    // Copy up to the first '?' or the end of the string
-    int i;
-    for (i = 0; i < max_length - 1 && full_path[i] != '\0' && full_path[i] != '?'; i++) {
-        file_path[i] = full_path[i];
+// Function to extract file path from request
+char* extract_file_path(const char* request) {
+    char* path = strstr(request, "GET ");
+    if (!path) return NULL;
+    
+    path += 4; // Skip "GET "
+    
+    char* end = strstr(path, " HTTP/");
+    if (!end) return NULL;
+    
+    // Create a copy of the path
+    size_t path_len = end - path;
+    char* file_path = (char*)malloc(path_len + 1);
+    strncpy(file_path, path, path_len);
+    file_path[path_len] = '\0';
+    
+    // Remove query parameters if present
+    char* query = strchr(file_path, '?');
+    if (query) {
+        *query = '\0';
     }
-    file_path[i] = '\0';
+    
+    return file_path;
 }
 
-void handle_request(SOCKET client_socket, const char* request) {
+void handle_request(int client_socket, const char* request) {
     char response[BUFFER_SIZE];
     char* file_path = extract_file_path(request);
     
@@ -279,30 +308,21 @@ int main() {
     char* port_str = getenv("PORT");
     int port = port_str ? atoi(port_str) : DEFAULT_PORT;
     
-    // Initialize Winsock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("WSAStartup failed\n");
-        return 1;
-    }
-
     // Load students from CSV
     load_students();
     
     // Create socket
-    SOCKET server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == INVALID_SOCKET) {
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
         printf("Socket creation failed\n");
-        WSACleanup();
         return 1;
     }
     
     // Set socket options
     int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) == SOCKET_ERROR) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         printf("setsockopt failed\n");
-        closesocket(server_fd);
-        WSACleanup();
+        close(server_fd);
         return 1;
     }
     
@@ -312,18 +332,16 @@ int main() {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
     
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR) {
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         printf("Bind failed\n");
-        closesocket(server_fd);
-        WSACleanup();
+        close(server_fd);
         return 1;
     }
     
     // Listen for connections
-    if (listen(server_fd, 10) == SOCKET_ERROR) {
+    if (listen(server_fd, 10) < 0) {
         printf("Listen failed\n");
-        closesocket(server_fd);
-        WSACleanup();
+        close(server_fd);
         return 1;
     }
     
@@ -331,12 +349,12 @@ int main() {
     
     // Accept connections
     while (1) {
-        SOCKET client_socket;
+        int client_socket;
         int addrlen = sizeof(struct sockaddr_in);
         struct sockaddr_in client_addr;
         
-        client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addrlen);
-        if (client_socket == INVALID_SOCKET) {
+        client_socket = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t*)&addrlen);
+        if (client_socket < 0) {
             printf("Accept failed\n");
             continue;
         }
@@ -348,10 +366,9 @@ int main() {
             handle_request(client_socket, buffer);
         }
         
-        closesocket(client_socket);
+        close(client_socket);
     }
     
-    closesocket(server_fd);
-    WSACleanup();
+    close(server_fd);
     return 0;
 } 

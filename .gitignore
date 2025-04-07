@@ -1,25 +1,28 @@
 # Compiled files
-*.exe
 *.o
-*.obj
+*.exe
+server
 
-# Logs
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
 *.log
 
+# Environment variables
+.env
+
 # OS generated files
-.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
-
-# IDE specific files
-.vscode/
-.idea/
-*.swp
-*.swo
 
 # Temporary files
 *.tmp
