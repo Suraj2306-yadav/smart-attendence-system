@@ -1,9 +1,9 @@
 services:
   - type: web
     name: smart-attendance-system
-    env: docker
-    buildCommand: docker build -t smart-attendance .
-    startCommand: docker run -p $PORT:8080 smart-attendance
+    env: shell
+    buildCommand: gcc server.c -o server
+    startCommand: ./server
     envVars:
       - key: PORT
         value: 8080 
